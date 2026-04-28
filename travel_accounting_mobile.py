@@ -344,7 +344,8 @@ def main():
         if st.button("清空所有記帳"):
             clear_expenses_db()
             st.session_state.expenses.clear()
-            st.experimental_rerun()
+            st.session_state.form_key += 1
+            st.rerun()
     else:
         st.info("目前尚無支出資料，請先新增或掃描發票。")
 
