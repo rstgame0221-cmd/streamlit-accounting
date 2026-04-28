@@ -170,6 +170,7 @@ def add_expense(date: str, category: str, amount: str, currency: str, payment_me
         return
 
     expense = TravelExpense(
+        id=None,
         date=date,
         category=category,
         amount=amount_value,
