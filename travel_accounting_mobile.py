@@ -131,7 +131,7 @@ def main():
     st.title("📱 旅遊快速記帳（行動網頁版）")
     st.write("在手機瀏覽器上使用的快速記帳工具，支援上傳日本發票照片並自動辨識。")
 
-    with st.expander("📥 快速使用說明", expanded=True):
+    with st.expander("📥 快速使用說明", expanded=False):
         st.markdown(
             "1. 點選「掃描發票」上傳收據照片；\n"
             "2. 檢查辨識結果後按「新增發票支出」；\n"
