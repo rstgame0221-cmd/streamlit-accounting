@@ -161,6 +161,10 @@ def init_session():
         st.session_state.expenses = load_expenses_from_db()
     if "last_scan" not in st.session_state:
         st.session_state.last_scan = {}
+    if "form_key" not in st.session_state:
+        st.session_state.form_key = 0
+    if "delete_pending" not in st.session_state:
+        st.session_state.delete_pending = None
 
 
 def add_expense(date: str, category: str, amount: str, currency: str, payment_method: str, description: str):
@@ -182,6 +186,7 @@ def add_expense(date: str, category: str, amount: str, currency: str, payment_me
     save_expense_to_db(expense)
     st.session_state.expenses.append(expense)
     st.session_state.last_scan = {}  # 清空掃描結果
+    st.session_state.form_key += 1  # 變更表單 key，強制重置表單
     st.success("已新增支出")
 
 
@@ -222,7 +227,7 @@ def main():
             "4. 可下載 CSV，或將頁面加入手機書籤。"
         )
 
-    with st.form("expense_form"):
+    with st.form(f"expense_form_{st.session_state.form_key}"):
         st.subheader("快速記帳表單")
         date_input = st.date_input("日期", value=datetime.date.today())
         category_input = st.selectbox("類別", ["交通", "住宿", "餐飲", "門票", "購物", "其他"], index=0)
@@ -234,7 +239,7 @@ def main():
         submitted = st.form_submit_button("新增支出")
         if submitted:
             add_expense(date_input.isoformat(), category_input, amount_input, currency_input, payment_method_input, description_input)
-            st.session_state.last_scan = {}  # 清空掃描結果，重置表單
+            st.rerun()
 
     st.markdown("---")
     st.subheader("發票掃描（日本發票）")
@@ -307,15 +312,21 @@ def main():
         
         st.divider()
         
+        # Check if delete is pending and process it
+        if st.session_state.delete_pending is not None:
+            expense_id_to_delete = st.session_state.delete_pending
+            st.session_state.delete_pending = None
+            delete_expense_from_db(expense_id_to_delete)
+            st.session_state.expenses = [e for e in st.session_state.expenses if e.id != expense_id_to_delete]
+            st.rerun()
+        
         # Display rows with delete button in each row
-        for expense in st.session_state.expenses:
+        for idx, expense in enumerate(st.session_state.expenses):
             col_del, col1, col2, col3, col4, col5, col6 = st.columns([0.6, 1.5, 1, 1, 0.8, 1.2, 2])
             with col_del:
-                if st.button("🗑️", key=f"delete_{expense.id}"):
-                    if expense.id is not None:
-                        delete_expense_from_db(expense.id)
-                    st.session_state.expenses = [e for e in st.session_state.expenses if e.id != expense.id]
-                    st.experimental_rerun()
+                if st.button("🗑️", key=f"delete_{idx}_{expense.id}"):
+                    st.session_state.delete_pending = expense.id
+                    st.rerun()
             with col1:
                 st.write(expense.date)
             with col2:
