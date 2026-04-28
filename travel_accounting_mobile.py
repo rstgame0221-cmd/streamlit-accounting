@@ -6,6 +6,7 @@ from dataclasses import dataclass, asdict
 from io import BytesIO
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 from PIL import Image
 
@@ -180,6 +181,7 @@ def add_expense(date: str, category: str, amount: str, currency: str, payment_me
     )
     save_expense_to_db(expense)
     st.session_state.expenses.append(expense)
+    st.session_state.last_scan = {}  # 清空掃描結果
     st.success("已新增支出")
 
 
@@ -232,6 +234,7 @@ def main():
         submitted = st.form_submit_button("新增支出")
         if submitted:
             add_expense(date_input.isoformat(), category_input, amount_input, currency_input, payment_method_input, description_input)
+            st.session_state.last_scan = {}  # 清空掃描結果，重置表單
 
     st.markdown("---")
     st.subheader("發票掃描（日本發票）")
@@ -277,6 +280,7 @@ def main():
                             )
                             save_expense_to_db(expense)
                             st.session_state.expenses.append(expense)
+                            st.session_state.last_scan = {}  # 清空掃描結果
                             st.success("已將發票資料加入記帳列表。")
                 except Exception as exc:
                     st.error(f"OCR 解析失敗：{exc}")
@@ -284,44 +288,28 @@ def main():
     st.markdown("---")
     st.subheader("記帳列表")
     if st.session_state.expenses:
-        # Display headers
-        col1, col2, col3, col4, col5, col6, col7 = st.columns([1.5, 1, 1, 0.8, 1.2, 2.5, 0.8])
-        with col1:
-            st.write("**日期**")
-        with col2:
-            st.write("**類別**")
-        with col3:
-            st.write("**金額**")
-        with col4:
-            st.write("**幣別**")
-        with col5:
-            st.write("**付款方式**")
-        with col6:
-            st.write("**備註**")
-        with col7:
-            st.write("**操作**")
-        
-        st.divider()
-        
-        # Display rows with delete button
+        # Create DataFrame for table display
+        data = []
         for idx, expense in enumerate(st.session_state.expenses):
-            col1, col2, col3, col4, col5, col6, col7 = st.columns([1.5, 1, 1, 0.8, 1.2, 2.5, 0.8])
-            with col1:
-                st.write(expense.date)
-            with col2:
-                st.write(expense.category)
-            with col3:
-                st.write(f"{expense.amount:.2f}")
-            with col4:
-                st.write(expense.currency)
-            with col5:
-                st.write(expense.payment_method)
-            with col6:
-                st.write(expense.description)
-            with col7:
-                if st.button("🗑️", key=f"delete_{idx}"):
-                    if expense.id is not None:
-                        delete_expense_from_db(expense.id)
+            data.append({
+                "日期": expense.date,
+                "類別": expense.category,
+                "金額": f"{expense.amount:.2f}",
+                "幣別": expense.currency,
+                "付款方式": expense.payment_method,
+                "備註": expense.description,
+            })
+        
+        df = pd.DataFrame(data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        st.markdown("**刪除選項：**")
+        cols = st.columns(len(st.session_state.expenses))
+        for idx, col in enumerate(cols):
+            with col:
+                if st.button(f"🗑️ {idx+1}", key=f"delete_{idx}"):
+                    if st.session_state.expenses[idx].id is not None:
+                        delete_expense_from_db(st.session_state.expenses[idx].id)
                     st.session_state.expenses.pop(idx)
                     st.experimental_rerun()
         
@@ -330,7 +318,6 @@ def main():
             clear_expenses_db()
             st.session_state.expenses.clear()
             st.experimental_rerun()
-            st.success("已清空所有資料")
     else:
         st.info("目前尚無支出資料，請先新增或掃描發票。")
 
