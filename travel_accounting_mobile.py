@@ -308,13 +308,13 @@ def main():
         st.divider()
         
         # Display rows with delete button in each row
-        for idx, expense in enumerate(st.session_state.expenses):
+        for expense in st.session_state.expenses:
             col_del, col1, col2, col3, col4, col5, col6 = st.columns([0.6, 1.5, 1, 1, 0.8, 1.2, 2])
             with col_del:
-                if st.button("🗑️", key=f"delete_{idx}"):
+                if st.button("🗑️", key=f"delete_{expense.id}"):
                     if expense.id is not None:
                         delete_expense_from_db(expense.id)
-                    st.session_state.expenses.pop(idx)
+                    st.session_state.expenses = [e for e in st.session_state.expenses if e.id != expense.id]
                     st.experimental_rerun()
             with col1:
                 st.write(expense.date)
