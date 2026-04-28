@@ -204,10 +204,49 @@ def main():
     st.markdown("---")
     st.subheader("記帳列表")
     if st.session_state.expenses:
-        rows = [expense.to_row() for expense in st.session_state.expenses]
-        st.table(rows)
+        # Display headers
+        col1, col2, col3, col4, col5, col6, col7 = st.columns([1.5, 1, 1, 0.8, 1.2, 2.5, 0.8])
+        with col1:
+            st.write("**日期**")
+        with col2:
+            st.write("**類別**")
+        with col3:
+            st.write("**金額**")
+        with col4:
+            st.write("**幣別**")
+        with col5:
+            st.write("**付款方式**")
+        with col6:
+            st.write("**備註**")
+        with col7:
+            st.write("**操作**")
+        
+        st.divider()
+        
+        # Display rows with delete button
+        for idx, expense in enumerate(st.session_state.expenses):
+            col1, col2, col3, col4, col5, col6, col7 = st.columns([1.5, 1, 1, 0.8, 1.2, 2.5, 0.8])
+            with col1:
+                st.write(expense.date)
+            with col2:
+                st.write(expense.category)
+            with col3:
+                st.write(f"{expense.amount:.2f}")
+            with col4:
+                st.write(expense.currency)
+            with col5:
+                st.write(expense.payment_method)
+            with col6:
+                st.write(expense.description)
+            with col7:
+                if st.button("🗑️", key=f"delete_{idx}"):
+                    st.session_state.expenses.pop(idx)
+                    st.rerun()
+        
+        st.divider()
         if st.button("清空所有記帳"):
             st.session_state.expenses.clear()
+            st.rerun()
             st.success("已清空所有資料")
     else:
         st.info("目前尚無支出資料，請先新增或掃描發票。")
