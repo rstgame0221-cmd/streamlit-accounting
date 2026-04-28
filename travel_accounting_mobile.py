@@ -288,30 +288,46 @@ def main():
     st.markdown("---")
     st.subheader("記帳列表")
     if st.session_state.expenses:
-        # Create DataFrame for table display
-        data = []
+        # Display table headers
+        col_del, col1, col2, col3, col4, col5, col6 = st.columns([0.6, 1.5, 1, 1, 0.8, 1.2, 2])
+        with col_del:
+            st.write("**刪**")
+        with col1:
+            st.write("**日期**")
+        with col2:
+            st.write("**類別**")
+        with col3:
+            st.write("**金額**")
+        with col4:
+            st.write("**幣別**")
+        with col5:
+            st.write("**付款方式**")
+        with col6:
+            st.write("**備註**")
+        
+        st.divider()
+        
+        # Display rows with delete button in each row
         for idx, expense in enumerate(st.session_state.expenses):
-            data.append({
-                "日期": expense.date,
-                "類別": expense.category,
-                "金額": f"{expense.amount:.2f}",
-                "幣別": expense.currency,
-                "付款方式": expense.payment_method,
-                "備註": expense.description,
-            })
-        
-        df = pd.DataFrame(data)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        
-        st.markdown("**刪除選項：**")
-        cols = st.columns(len(st.session_state.expenses))
-        for idx, col in enumerate(cols):
-            with col:
-                if st.button(f"🗑️ {idx+1}", key=f"delete_{idx}"):
-                    if st.session_state.expenses[idx].id is not None:
-                        delete_expense_from_db(st.session_state.expenses[idx].id)
+            col_del, col1, col2, col3, col4, col5, col6 = st.columns([0.6, 1.5, 1, 1, 0.8, 1.2, 2])
+            with col_del:
+                if st.button("🗑️", key=f"delete_{idx}"):
+                    if expense.id is not None:
+                        delete_expense_from_db(expense.id)
                     st.session_state.expenses.pop(idx)
                     st.experimental_rerun()
+            with col1:
+                st.write(expense.date)
+            with col2:
+                st.write(expense.category)
+            with col3:
+                st.write(f"{expense.amount:.2f}")
+            with col4:
+                st.write(expense.currency)
+            with col5:
+                st.write(expense.payment_method)
+            with col6:
+                st.write(expense.description)
         
         st.divider()
         if st.button("清空所有記帳"):
