@@ -165,6 +165,8 @@ def init_session():
         st.session_state.form_key = 0
     if "delete_pending" not in st.session_state:
         st.session_state.delete_pending = None
+    if "expanded_items" not in st.session_state:
+        st.session_state.expanded_items = set()
 
 
 def add_expense(date: str, category: str, amount: str, currency: str, payment_method: str, description: str):
@@ -293,57 +295,57 @@ def main():
     st.markdown("---")
     st.subheader("記帳列表")
     if st.session_state.expenses:
-        # Display table headers
-        col_del, col1, col2, col3, col4, col5, col6 = st.columns([0.6, 1.5, 1, 1, 0.8, 1.2, 2])
-        with col_del:
-            st.write("**刪**")
-        with col1:
-            st.write("**日期**")
-        with col2:
-            st.write("**類別**")
-        with col3:
-            st.write("**金額**")
-        with col4:
-            st.write("**幣別**")
-        with col5:
-            st.write("**付款方式**")
-        with col6:
-            st.write("**備註**")
-        
-        st.divider()
-        
         # Check if delete is pending and process it
         if st.session_state.delete_pending is not None:
             expense_id_to_delete = st.session_state.delete_pending
             st.session_state.delete_pending = None
             delete_expense_from_db(expense_id_to_delete)
             st.session_state.expenses = [e for e in st.session_state.expenses if e.id != expense_id_to_delete]
+            if expense_id_to_delete in st.session_state.expanded_items:
+                st.session_state.expanded_items.discard(expense_id_to_delete)
             st.rerun()
         
-        # Display rows with delete button in each row
+        # Display items as expandable cards
         for idx, expense in enumerate(st.session_state.expenses):
-            col_del, col1, col2, col3, col4, col5, col6 = st.columns([0.6, 1.5, 1, 1, 0.8, 1.2, 2])
+            col_expand, col_info, col_del = st.columns([3, 1, 0.5])
+            
+            # Expand button with summary info
+            with col_expand:
+                is_expanded = expense.id in st.session_state.expanded_items
+                arrow = "▼" if is_expanded else "▶"
+                if st.button(
+                    f"{arrow} {expense.date} | {expense.category} | {expense.amount:.2f} {expense.currency}",
+                    key=f"expand_{idx}_{expense.id}",
+                    use_container_width=True
+                ):
+                    if is_expanded:
+                        st.session_state.expanded_items.discard(expense.id)
+                    else:
+                        st.session_state.expanded_items.add(expense.id)
+                    st.rerun()
+            
+            # Delete button
             with col_del:
                 if st.button("🗑️", key=f"delete_{idx}_{expense.id}"):
                     st.session_state.delete_pending = expense.id
                     st.rerun()
-            with col1:
-                st.write(expense.date)
-            with col2:
-                st.write(expense.category)
-            with col3:
-                st.write(f"{expense.amount:.2f}")
-            with col4:
-                st.write(expense.currency)
-            with col5:
-                st.write(expense.payment_method)
-            with col6:
-                st.write(expense.description)
+            
+            # Show details if expanded
+            if is_expanded:
+                st.markdown("<div style='margin-left: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;'>", unsafe_allow_html=True)
+                st.markdown(f"**日期：** {expense.date}", unsafe_allow_html=True)
+                st.markdown(f"**類別：** {expense.category}", unsafe_allow_html=True)
+                st.markdown(f"**金額：** {expense.amount:.2f}", unsafe_allow_html=True)
+                st.markdown(f"**幣別：** {expense.currency}", unsafe_allow_html=True)
+                st.markdown(f"**付款方式：** {expense.payment_method}", unsafe_allow_html=True)
+                st.markdown(f"**備註：** {expense.description}", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
         
         st.divider()
         if st.button("清空所有記帳"):
             clear_expenses_db()
             st.session_state.expenses.clear()
+            st.session_state.expanded_items.clear()
             st.session_state.form_key += 1
             st.rerun()
     else:
