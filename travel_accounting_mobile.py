@@ -21,10 +21,11 @@ class TravelExpense:
     category: str
     amount: float
     currency: str
+    payment_method: str
     description: str
 
     def to_row(self):
-        return [self.date, self.category, f"{self.amount:.2f}", self.currency, self.description]
+        return [self.date, self.category, f"{self.amount:.2f}", self.currency, self.payment_method, self.description]
 
 
 def parse_invoice_text(text: str) -> dict:
@@ -84,7 +85,7 @@ def init_session():
         st.session_state.last_scan = {}
 
 
-def add_expense(date: str, category: str, amount: str, currency: str, description: str):
+def add_expense(date: str, category: str, amount: str, currency: str, payment_method: str, description: str):
     try:
         amount_value = float(amount)
     except ValueError:
@@ -96,6 +97,7 @@ def add_expense(date: str, category: str, amount: str, currency: str, descriptio
         category=category,
         amount=amount_value,
         currency=currency,
+        payment_method=payment_method,
         description=description,
     )
     st.session_state.expenses.append(expense)
@@ -104,7 +106,7 @@ def add_expense(date: str, category: str, amount: str, currency: str, descriptio
 
 def download_csv() -> BytesIO:
     output = BytesIO()
-    lines = ["日期,類別,金額,幣別,備註\n"]
+    lines = ["日期,類別,金額,幣別,付款方式,備註\n"]
     for expense in st.session_state.expenses:
         row = expense.to_row()
         lines.append(",".join(f'"{item}"' for item in row) + "\n")
@@ -145,11 +147,12 @@ def main():
         category_input = st.selectbox("類別", ["交通", "住宿", "餐飲", "門票", "購物", "其他"], index=0)
         amount_input = st.text_input("金額", value=st.session_state.last_scan.get("amount", ""))
         currency_input = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"], index=0)
+        payment_method_input = st.selectbox("付款方式", ["現金", "信用卡"], index=0)
         description_input = st.text_input("備註", value=st.session_state.last_scan.get("description", ""))
 
         submitted = st.form_submit_button("新增支出")
         if submitted:
-            add_expense(date_input.isoformat(), category_input, amount_input, currency_input, description_input)
+            add_expense(date_input.isoformat(), category_input, amount_input, currency_input, payment_method_input, description_input)
 
     st.markdown("---")
     st.subheader("發票掃描（日本發票）")
@@ -190,6 +193,7 @@ def main():
                                     category="其他",
                                     amount=float(parsed["amount"].replace(",", "")),
                                     currency=parsed["currency"],
+                                    payment_method="現金",
                                     description=parsed["description"],
                                 )
                             )
