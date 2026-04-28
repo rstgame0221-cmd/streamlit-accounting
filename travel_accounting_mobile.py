@@ -21,11 +21,10 @@ class TravelExpense:
     category: str
     amount: float
     currency: str
-    payer: str
     description: str
 
     def to_row(self):
-        return [self.date, self.category, f"{self.amount:.2f}", self.currency, self.payer, self.description]
+        return [self.date, self.category, f"{self.amount:.2f}", self.currency, self.description]
 
 
 def parse_invoice_text(text: str) -> dict:
@@ -85,7 +84,7 @@ def init_session():
         st.session_state.last_scan = {}
 
 
-def add_expense(date: str, category: str, amount: str, currency: str, payer: str, description: str):
+def add_expense(date: str, category: str, amount: str, currency: str, description: str):
     try:
         amount_value = float(amount)
     except ValueError:
@@ -97,7 +96,6 @@ def add_expense(date: str, category: str, amount: str, currency: str, payer: str
         category=category,
         amount=amount_value,
         currency=currency,
-        payer=payer,
         description=description,
     )
     st.session_state.expenses.append(expense)
@@ -106,7 +104,7 @@ def add_expense(date: str, category: str, amount: str, currency: str, payer: str
 
 def download_csv() -> BytesIO:
     output = BytesIO()
-    lines = ["日期,類別,金額,幣別,付款人,備註\n"]
+    lines = ["日期,類別,金額,幣別,備註\n"]
     for expense in st.session_state.expenses:
         row = expense.to_row()
         lines.append(",".join(f'"{item}"' for item in row) + "\n")
@@ -147,26 +145,11 @@ def main():
         category_input = st.selectbox("類別", ["交通", "住宿", "餐飲", "門票", "購物", "其他"], index=0)
         amount_input = st.text_input("金額", value=st.session_state.last_scan.get("amount", ""))
         currency_input = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"], index=0)
-        payer_input = st.text_input("付款人", value="本人")
         description_input = st.text_input("備註", value=st.session_state.last_scan.get("description", ""))
 
         submitted = st.form_submit_button("新增支出")
         if submitted:
-            add_expense(date_input.isoformat(), category_input, amount_input, currency_input, payer_input, description_input)
-
-    st.markdown("---")
-
-    st.subheader("快速按鈕")
-    preset_cols = st.columns(2)
-    if preset_cols[0].button("交通 500"):
-        add_expense(date_input.isoformat(), "交通", "500", currency_input, payer_input, description_input)
-    if preset_cols[1].button("餐飲 1200"):
-        add_expense(date_input.isoformat(), "餐飲", "1200", currency_input, payer_input, description_input)
-    preset_cols = st.columns(2)
-    if preset_cols[0].button("住宿 8000"):
-        add_expense(date_input.isoformat(), "住宿", "8000", currency_input, payer_input, description_input)
-    if preset_cols[1].button("其他 300"):
-        add_expense(date_input.isoformat(), "其他", "300", currency_input, payer_input, description_input)
+            add_expense(date_input.isoformat(), category_input, amount_input, currency_input, description_input)
 
     st.markdown("---")
     st.subheader("發票掃描（日本發票）")
@@ -207,7 +190,6 @@ def main():
                                     category="其他",
                                     amount=float(parsed["amount"].replace(",", "")),
                                     currency=parsed["currency"],
-                                    payer="本人",
                                     description=parsed["description"],
                                 )
                             )
