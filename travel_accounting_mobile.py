@@ -305,41 +305,27 @@ def main():
                 st.session_state.expanded_items.discard(expense_id_to_delete)
             st.rerun()
         
-        # Display items as expandable cards
+        # Display items as expandable expanders (compact)
         for idx, expense in enumerate(st.session_state.expenses):
-            col_expand, col_info, col_del = st.columns([3, 1, 0.5])
+            label = f"{expense.date} | {expense.category} | {expense.amount:.2f} {expense.currency}"
             
-            # Expand button with summary info
-            with col_expand:
-                is_expanded = expense.id in st.session_state.expanded_items
-                arrow = "▼" if is_expanded else "▶"
-                if st.button(
-                    f"{arrow} {expense.date} | {expense.category} | {expense.amount:.2f} {expense.currency}",
-                    key=f"expand_{idx}_{expense.id}",
-                    use_container_width=True
-                ):
-                    if is_expanded:
-                        st.session_state.expanded_items.discard(expense.id)
-                    else:
-                        st.session_state.expanded_items.add(expense.id)
-                    st.rerun()
-            
-            # Delete button
-            with col_del:
-                if st.button("🗑️", key=f"delete_{idx}_{expense.id}"):
-                    st.session_state.delete_pending = expense.id
-                    st.rerun()
-            
-            # Show details if expanded
-            if is_expanded:
-                st.markdown("<div style='margin-left: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;'>", unsafe_allow_html=True)
-                st.markdown(f"**日期：** {expense.date}", unsafe_allow_html=True)
-                st.markdown(f"**類別：** {expense.category}", unsafe_allow_html=True)
-                st.markdown(f"**金額：** {expense.amount:.2f}", unsafe_allow_html=True)
-                st.markdown(f"**幣別：** {expense.currency}", unsafe_allow_html=True)
-                st.markdown(f"**付款方式：** {expense.payment_method}", unsafe_allow_html=True)
-                st.markdown(f"**備註：** {expense.description}", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
+            with st.expander(label):
+                col1, col2 = st.columns([4, 1])
+                
+                # Show details
+                with col1:
+                    st.markdown(f"**日期：** {expense.date}")
+                    st.markdown(f"**類別：** {expense.category}")
+                    st.markdown(f"**金額：** {expense.amount:.2f}")
+                    st.markdown(f"**幣別：** {expense.currency}")
+                    st.markdown(f"**付款方式：** {expense.payment_method}")
+                    st.markdown(f"**備註：** {expense.description}")
+                
+                # Delete button
+                with col2:
+                    if st.button("🗑️ 刪除", key=f"delete_{idx}_{expense.id}"):
+                        st.session_state.delete_pending = expense.id
+                        st.rerun()
         
         st.divider()
         if st.button("清空所有記帳"):
