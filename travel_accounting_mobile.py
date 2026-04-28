@@ -1,6 +1,7 @@
 import csv
 import datetime
 import re
+import sqlite3
 from dataclasses import dataclass, asdict
 from io import BytesIO
 from pathlib import Path
@@ -17,6 +18,7 @@ except ImportError:
 
 @dataclass
 class TravelExpense:
+    id: int | None
     date: str
     category: str
     amount: float
@@ -78,9 +80,84 @@ def parse_invoice_text(text: str) -> dict:
     return result
 
 
+DB_FILE = Path("expenses.db")
+
+
+def init_db():
+    DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            category TEXT NOT NULL,
+            amount REAL NOT NULL,
+            currency TEXT NOT NULL,
+            payment_method TEXT NOT NULL,
+            description TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_expenses_from_db():
+    init_db()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, date, category, amount, currency, payment_method, description FROM expenses ORDER BY id"
+    )
+    rows = []
+    for row in cursor.fetchall():
+        rows.append(
+            TravelExpense(
+                id=row[0],
+                date=row[1],
+                category=row[2],
+                amount=row[3],
+                currency=row[4],
+                payment_method=row[5],
+                description=row[6] or "",
+            )
+        )
+    conn.close()
+    return rows
+
+
+def save_expense_to_db(expense: TravelExpense):
+    init_db()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO expenses (date, category, amount, currency, payment_method, description) VALUES (?, ?, ?, ?, ?, ?)",
+        (expense.date, expense.category, expense.amount, expense.currency, expense.payment_method, expense.description),
+    )
+    expense.id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+
+def delete_expense_from_db(expense_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+    conn.commit()
+    conn.close()
+
+
+def clear_expenses_db():
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute("DELETE FROM expenses")
+    conn.commit()
+    conn.close()
+
+
 def init_session():
+    init_db()
     if "expenses" not in st.session_state:
-        st.session_state.expenses = []
+        st.session_state.expenses = load_expenses_from_db()
     if "last_scan" not in st.session_state:
         st.session_state.last_scan = {}
 
@@ -100,6 +177,7 @@ def add_expense(date: str, category: str, amount: str, currency: str, payment_me
         payment_method=payment_method,
         description=description,
     )
+    save_expense_to_db(expense)
     st.session_state.expenses.append(expense)
     st.success("已新增支出")
 
@@ -187,16 +265,17 @@ def main():
                         if not parsed["amount"]:
                             st.warning("未偵測到金額，請手動輸入。")
                         else:
-                            st.session_state.expenses.append(
-                                TravelExpense(
-                                    date=parsed["date"] or date_input.isoformat(),
-                                    category="其他",
-                                    amount=float(parsed["amount"].replace(",", "")),
-                                    currency=parsed["currency"],
-                                    payment_method="現金",
-                                    description=parsed["description"],
-                                )
+                            expense = TravelExpense(
+                                id=None,
+                                date=parsed["date"] or date_input.isoformat(),
+                                category="其他",
+                                amount=float(parsed["amount"].replace(",", "")),
+                                currency=parsed["currency"],
+                                payment_method="現金",
+                                description=parsed["description"],
                             )
+                            save_expense_to_db(expense)
+                            st.session_state.expenses.append(expense)
                             st.success("已將發票資料加入記帳列表。")
                 except Exception as exc:
                     st.error(f"OCR 解析失敗：{exc}")
@@ -240,13 +319,16 @@ def main():
                 st.write(expense.description)
             with col7:
                 if st.button("🗑️", key=f"delete_{idx}"):
+                    if expense.id is not None:
+                        delete_expense_from_db(expense.id)
                     st.session_state.expenses.pop(idx)
-                    st.rerun()
+                    st.experimental_rerun()
         
         st.divider()
         if st.button("清空所有記帳"):
+            clear_expenses_db()
             st.session_state.expenses.clear()
-            st.rerun()
+            st.experimental_rerun()
             st.success("已清空所有資料")
     else:
         st.info("目前尚無支出資料，請先新增或掃描發票。")
