@@ -354,34 +354,18 @@ def main():
         # Display items grouped by date
         for date, expenses_on_date in grouped_expenses:
             with st.expander(f"📅 {date} ({len(expenses_on_date)} 筆)", expanded=False):
-                # 用 HTML 表格確保手機上也是一行一筆
-                table_html = '<table style="width:100%; border-collapse: collapse;">'
                 for idx, expense in enumerate(expenses_on_date):
-                    edit_button = f'<button onclick="alert(\'edit\')" style="padding: 2px 4px; font-size: 12px; background: none; border: none; cursor: pointer;">✏️</button>'
-                    delete_button = f'<button onclick="alert(\'delete\')" style="padding: 2px 4px; font-size: 12px; background: none; border: none; cursor: pointer;">🗑️</button>'
+                    # 每一行：類別 + 備註 | 金額 幣別 | 編輯 | 刪除
+                    col_info, col_amt, col_edt, col_del = st.columns([2.5, 1.2, 0.6, 0.6])
                     
-                    table_html += f'''<tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 8px 4px; flex-grow: 1;">
-                            <strong>{expense.category}</strong> {expense.description[:12]}
-                        </td>
-                        <td style="padding: 8px 4px; white-space: nowrap; text-align: right;">
-                            {int(expense.amount)} {expense.currency}
-                        </td>
-                        <td style="padding: 8px 4px; white-space: nowrap; text-align: center;">
-                            <div data-expense-id="{expense.id}" data-idx="{idx}" style="display: flex; gap: 4px; justify-content: flex-end;">
-                                <button data-edit="{idx}_{expense.id}" style="padding: 2px 6px; font-size: 14px; background: none; border: 1px solid #ddd; border-radius: 3px; cursor: pointer;">✏️</button>
-                                <button data-delete="{idx}_{expense.id}" style="padding: 2px 6px; font-size: 14px; background: none; border: 1px solid #ddd; border-radius: 3px; cursor: pointer;">🗑️</button>
-                            </div>
-                        </td>
-                    </tr>'''
-                table_html += '</table>'
-                st.markdown(table_html, unsafe_allow_html=True)
-                
-                # 實際的編輯和刪除按鈕
-                for idx, expense in enumerate(expenses_on_date):
-                    col_edt, col_del = st.columns([1, 1])
+                    with col_info:
+                        st.markdown(f"**{expense.category}** {expense.description[:12]}")
+                    
+                    with col_amt:
+                        st.text(f"{int(expense.amount)} {expense.currency}")
+                    
                     with col_edt:
-                        if st.button("✅ 編輯", key=f"edit_real_{idx}_{expense.id}"):
+                        if st.button("✏️ 編", key=f"edit_{idx}_{expense.id}"):
                             st.session_state.editing_id = expense.id
                             st.session_state.edit_data = {
                                 "date": expense.date,
@@ -394,7 +378,7 @@ def main():
                             st.rerun()
                     
                     with col_del:
-                        if st.button("❌ 刪除", key=f"delete_real_{idx}_{expense.id}"):
+                        if st.button("🗑️ 刪", key=f"delete_{idx}_{expense.id}"):
                             st.session_state.delete_pending = expense.id
                             st.rerun()
         
