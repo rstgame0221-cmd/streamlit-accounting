@@ -229,8 +229,26 @@ def update_expense_in_db(expense: TravelExpense):
 
 
 def main():
-    st.set_page_config(page_title="旅遊快速記帳", page_icon="📱", layout="centered")
+    st.set_page_config(page_title="旅遊快速記帳", page_icon="💱", layout="wide")
     init_session()
+    
+    # 隐藏 number_input 的加減按骮css
+    st.markdown("""
+    <style>
+    /* 隐藏 number input 的加減按骮e */
+    button[kind="secondary"] { display: none !important; }
+    .step-up, .step-down { display: none !important; }
+    /* 也隐藏了作用遠法的触发器 */
+    input[type="number"] {
+        -moz-appearance: textfield;
+    }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     st.title("📱 旅遊快速記帳（行動網頁版）")
     st.write("在手機瀏覽器上使用的快速記帳工具，支援上傳日本發票照片並自動辨識。")
@@ -247,8 +265,14 @@ def main():
         st.subheader("快速記帳表單")
         date_input = st.date_input("日期", value=datetime.date.today())
         category_input = st.selectbox("類別", ["交通", "住宿", "餐飲", "門票", "購物", "其他"], index=0)
-        amount_input = st.number_input("金額", min_value=0, step=1, format="%d")
-        currency_input = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"], index=0)
+        
+        # 金額和幣別在同一行
+        col_amt, col_cur = st.columns([2, 1])
+        with col_amt:
+            amount_input = st.number_input("金額", min_value=0, step=1, format="%d")
+        with col_cur:
+            currency_input = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"], index=0)
+        
         payment_method_input = st.selectbox("付款方式", ["現金", "信用卡"], index=0)
         description_input = st.text_input("備註", value=st.session_state.last_scan.get("description", ""))
 
@@ -331,11 +355,11 @@ def main():
         for date, expenses_on_date in grouped_expenses:
             with st.expander(f"📅 {date} ({len(expenses_on_date)} 筆)", expanded=False):
                 for idx, expense in enumerate(expenses_on_date):
-                    # 使用更緊湊的佈局，一行一筆
-                    col_cat, col_amt, col_edt, col_del = st.columns([1.5, 1, 0.4, 0.4])
+                    # 使用更預窄的布局，一行一筆
+                    col_cat, col_amt, col_edt, col_del = st.columns([2, 1.2, 0.5, 0.5])
                     
                     with col_cat:
-                        st.markdown(f"**{expense.category}** {expense.description[:15]}")
+                        st.markdown(f"**{expense.category}** {expense.description[:12]}")
                     
                     with col_amt:
                         st.markdown(f"{int(expense.amount)} {expense.currency}")
@@ -374,8 +398,11 @@ def main():
                     with st.form(f"edit_form_{st.session_state.editing_id}"):
                         edit_date = st.date_input("日期", value=datetime.datetime.strptime(st.session_state.edit_data["date"], "%Y-%m-%d").date())
                         edit_category = st.selectbox("類別", ["交通", "住宿", "餐飲", "門票", "購物", "其他"], index=["交通", "住宿", "餐飲", "門票", "購物", "其他"].index(st.session_state.edit_data["category"]))
-                        edit_amount = st.number_input("金額", min_value=0, value=int(float(st.session_state.edit_data["amount"])), step=1, format="%d")
-                        edit_currency = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"], index=["JPY", "TWD", "USD", "EUR"].index(st.session_state.edit_data["currency"]))
+                        col_amt1, col_cur = st.columns([2, 1])
+                        with col_amt1:
+                            edit_amount = st.number_input("金額", min_value=0, value=int(float(st.session_state.edit_data["amount"])), step=1, format="%d")
+                        with col_cur:
+                            edit_currency = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"], index=["JPY", "TWD", "USD", "EUR"].index(st.session_state.edit_data["currency"]))
                         edit_payment = st.selectbox("付款方式", ["現金", "信用卡"], index=["現金", "信用卡"].index(st.session_state.edit_data["payment_method"]))
                         edit_description = st.text_input("備註", value=st.session_state.edit_data["description"])
                         
