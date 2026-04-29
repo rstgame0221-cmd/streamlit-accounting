@@ -5,9 +5,7 @@ import sqlite3
 from dataclasses import dataclass, asdict
 from io import BytesIO
 from pathlib import Path
-from itertools import groupby
 
-import pandas as pd
 import streamlit as st
 from PIL import Image
 
@@ -193,6 +191,8 @@ def add_expense(date: str, category: str, amount: str, currency: str, payment_me
     st.session_state.last_scan = {}  # 清空掃描結果
     st.session_state.form_key += 1  # 變更表單 key，強制重置表單
     st.success("已新增支出")
+    st.session_state.expenses.append(expense)
+    st.success("已新增支出")
 
 
 def download_csv() -> BytesIO:
@@ -206,17 +206,6 @@ def download_csv() -> BytesIO:
     return output
 
 
-def build_summary() -> str:
-    totals = {}
-    for expense in st.session_state.expenses:
-        totals.setdefault(expense.currency, 0.0)
-        totals[expense.currency] += expense.amount
-    lines = [f"總筆數：{len(st.session_state.expenses)}"]
-    for currency, total in totals.items():
-        lines.append(f"總計 ({currency})：{total:.2f}")
-    return "\n".join(lines)
-
-
 def update_expense_in_db(expense: TravelExpense):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -228,27 +217,20 @@ def update_expense_in_db(expense: TravelExpense):
     conn.close()
 
 
+def build_summary() -> str:
+    totals = {}
+    for expense in st.session_state.expenses:
+        totals.setdefault(expense.currency, 0.0)
+        totals[expense.currency] += expense.amount
+    lines = [f"總筆數：{len(st.session_state.expenses)}"]
+    for currency, total in totals.items():
+        lines.append(f"總計 ({currency})：{total:.2f}")
+    return "\n".join(lines)
+
+
 def main():
-    st.set_page_config(page_title="旅遊快速記帳", page_icon="💱", layout="wide")
+    st.set_page_config(page_title="旅遊快速記帳", page_icon="📱", layout="centered")
     init_session()
-    
-    # 隐藏 number_input 的加減按骮css
-    st.markdown("""
-    <style>
-    /* 隐藏 number input 的加減按骮e */
-    button[kind="secondary"] { display: none !important; }
-    .step-up, .step-down { display: none !important; }
-    /* 也隐藏了作用遠法的触发器 */
-    input[type="number"] {
-        -moz-appearance: textfield;
-    }
-    input[type="number"]::-webkit-outer-spin-button,
-    input[type="number"]::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
     st.title("📱 旅遊快速記帳（行動網頁版）")
     st.write("在手機瀏覽器上使用的快速記帳工具，支援上傳日本發票照片並自動辨識。")
@@ -265,20 +247,14 @@ def main():
         st.subheader("快速記帳表單")
         date_input = st.date_input("日期", value=datetime.date.today())
         category_input = st.selectbox("類別", ["交通", "住宿", "餐飲", "門票", "購物", "其他"], index=0)
-        
-        # 金額和幣別在同一行
-        col_amt, col_cur = st.columns([2, 1])
-        with col_amt:
-            amount_input = st.number_input("金額", min_value=0, step=1, format="%d")
-        with col_cur:
-            currency_input = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"], index=0)
-        
+        amount_input = st.text_input("金額", value=st.session_state.last_scan.get("amount", ""))
+        currency_input = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"], index=0)
         payment_method_input = st.selectbox("付款方式", ["現金", "信用卡"], index=0)
         description_input = st.text_input("備註", value=st.session_state.last_scan.get("description", ""))
 
         submitted = st.form_submit_button("新增支出")
         if submitted:
-            add_expense(date_input.isoformat(), category_input, str(int(amount_input)), currency_input, payment_method_input, description_input)
+            add_expense(date_input.isoformat(), category_input, amount_input, currency_input, payment_method_input, description_input)
             st.rerun()
 
     st.markdown("---")
@@ -325,15 +301,16 @@ def main():
                             )
                             save_expense_to_db(expense)
                             st.session_state.expenses.append(expense)
-                            st.session_state.last_scan = {}  # 清空掃描結果
+                            st.session_state.last_scan = {}
                             st.success("已將發票資料加入記帳列表。")
+                            st.rerun()
                 except Exception as exc:
                     st.error(f"OCR 解析失敗：{exc}")
 
     st.markdown("---")
     st.subheader("記帳列表")
     if st.session_state.expenses:
-        # Check if delete is pending and process it
+        # 檢查是否有待刪除的項目
         if st.session_state.delete_pending is not None:
             expense_id_to_delete = st.session_state.delete_pending
             st.session_state.delete_pending = None
@@ -341,24 +318,18 @@ def main():
             st.session_state.expenses = [e for e in st.session_state.expenses if e.id != expense_id_to_delete]
             st.rerun()
         
-        # Check if editing and save changes
-        if st.session_state.editing_id is not None and st.session_state.edit_data:
-            # This is handled in the edit form section below
-            pass
-        
-        # Group expenses by date
+        # 按日期分組
         from itertools import groupby
         sorted_expenses = sorted(st.session_state.expenses, key=lambda x: x.date, reverse=True)
         grouped_expenses = [(date, list(group)) for date, group in groupby(sorted_expenses, key=lambda x: x.date)]
         
-        # Display items grouped by date
+        # 顯示按日期分組的項目
         for date, expenses_on_date in grouped_expenses:
             with st.expander(f"📅 {date} ({len(expenses_on_date)} 筆)", expanded=False):
                 for idx, expense in enumerate(expenses_on_date):
-                    # 每一行：類別 + 備註 | 金額 幣別 | 編輯 | 刪除
-                    col_info, col_amt, col_edt, col_del = st.columns([2.5, 1.2, 0.6, 0.6])
+                    col_cat, col_amt, col_edt, col_del = st.columns([2, 1.2, 0.6, 0.6])
                     
-                    with col_info:
+                    with col_cat:
                         st.markdown(f"**{expense.category}** {expense.description[:12]}")
                     
                     with col_amt:
@@ -382,43 +353,44 @@ def main():
                             st.session_state.delete_pending = expense.id
                             st.rerun()
         
-        # Edit form modal-like display
+        st.divider()
+        if st.button("清空所有記帳"):
+            clear_expenses_db()
+            st.session_state.expenses.clear()
+            st.session_state.form_key += 1
+            st.rerun()
+        
+        # 編輯表單
         if st.session_state.editing_id is not None:
             st.divider()
             st.subheader("編輯支出")
             
-            # Find the expense being edited
             expense_to_edit = next((e for e in st.session_state.expenses if e.id == st.session_state.editing_id), None)
             if expense_to_edit:
-                col1, col2 = st.columns([3, 1])
-                
-                with col1:
-                    with st.form(f"edit_form_{st.session_state.editing_id}"):
-                        edit_date = st.date_input("日期", value=datetime.datetime.strptime(st.session_state.edit_data["date"], "%Y-%m-%d").date())
-                        edit_category = st.selectbox("類別", ["交通", "住宿", "餐飲", "門票", "購物", "其他"], index=["交通", "住宿", "餐飲", "門票", "購物", "其他"].index(st.session_state.edit_data["category"]))
-                        col_amt1, col_cur = st.columns([2, 1])
-                        with col_amt1:
-                            edit_amount = st.number_input("金額", min_value=0, value=int(float(st.session_state.edit_data["amount"])), step=1, format="%d")
-                        with col_cur:
-                            edit_currency = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"], index=["JPY", "TWD", "USD", "EUR"].index(st.session_state.edit_data["currency"]))
-                        edit_payment = st.selectbox("付款方式", ["現金", "信用卡"], index=["現金", "信用卡"].index(st.session_state.edit_data["payment_method"]))
-                        edit_description = st.text_input("備註", value=st.session_state.edit_data["description"])
-                        
-                        col_save, col_cancel = st.columns([1, 1])
-                        with col_save:
-                            if st.form_submit_button("✅ 保存"):
+                with st.form(f"edit_form_{st.session_state.editing_id}"):
+                    edit_date = st.date_input("日期", value=datetime.datetime.strptime(st.session_state.edit_data["date"], "%Y-%m-%d").date())
+                    edit_category = st.selectbox("類別", ["交通", "住宿", "餐飲", "門票", "購物", "其他"], index=["交通", "住宿", "餐飲", "門票", "購物", "其他"].index(st.session_state.edit_data["category"]))
+                    edit_amount = st.text_input("金額", value=st.session_state.edit_data["amount"])
+                    edit_currency = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"], index=["JPY", "TWD", "USD", "EUR"].index(st.session_state.edit_data["currency"]))
+                    edit_payment = st.selectbox("付款方式", ["現金", "信用卡"], index=["現金", "信用卡"].index(st.session_state.edit_data["payment_method"]))
+                    edit_description = st.text_input("備註", value=st.session_state.edit_data["description"])
+                    
+                    col_save, col_cancel = st.columns([1, 1])
+                    with col_save:
+                        if st.form_submit_button("✅ 保存"):
+                            try:
+                                amount_value = float(edit_amount)
                                 updated_expense = TravelExpense(
                                     id=expense_to_edit.id,
                                     date=edit_date.isoformat(),
                                     category=edit_category,
-                                    amount=float(edit_amount),
+                                    amount=amount_value,
                                     currency=edit_currency,
                                     payment_method=edit_payment,
                                     description=edit_description,
                                 )
                                 update_expense_in_db(updated_expense)
                                 
-                                # Update session state
                                 for i, e in enumerate(st.session_state.expenses):
                                     if e.id == st.session_state.editing_id:
                                         st.session_state.expenses[i] = updated_expense
@@ -428,19 +400,14 @@ def main():
                                 st.session_state.edit_data = {}
                                 st.success("已保存")
                                 st.rerun()
-                        
-                        with col_cancel:
-                            if st.form_submit_button("❌ 取消"):
-                                st.session_state.editing_id = None
-                                st.session_state.edit_data = {}
-                                st.rerun()
-        
-        st.divider()
-        if st.button("清空所有記帳"):
-            clear_expenses_db()
-            st.session_state.expenses.clear()
-            st.session_state.form_key += 1
-            st.rerun()
+                            except ValueError:
+                                st.error("金額格式錯誤")
+                    
+                    with col_cancel:
+                        if st.form_submit_button("❌ 取消"):
+                            st.session_state.editing_id = None
+                            st.session_state.edit_data = {}
+                            st.rerun()
     else:
         st.info("目前尚無支出資料，請先新增或掃描發票。")
 
