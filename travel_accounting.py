@@ -1,258 +1,262 @@
-import csv
 import datetime
-from dataclasses import dataclass, asdict
+import sqlite3
+import re
 from pathlib import Path
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from dataclasses import dataclass
+
+import streamlit as st
+from PIL import Image
+
+try:
+    import pytesseract
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+
+
+# =========================
+# 🗄 DB
+# =========================
+DB = Path("expenses.db")
 
 
 @dataclass
-class TravelExpense:
+class Expense:
+    id: int | None
     date: str
     category: str
     amount: float
     currency: str
-    description: str
-    payer: str
-
-    def to_row(self):
-        return [self.date, self.category, f"{self.amount:.2f}", self.currency, self.payer, self.description]
-
-    @staticmethod
-    def from_row(row):
-        try:
-            return TravelExpense(
-                date=row[0],
-                category=row[1],
-                amount=float(row[2]),
-                currency=row[3],
-                payer=row[4],
-                description=row[5],
-            )
-        except Exception:
-            return None
+    payment: str
+    desc: str
 
 
-class TravelExpenseApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("旅遊計帳程式")
-        self.root.geometry("920x600")
-        self.expenses = []
-        self.current_file = None
-
-        self.date_var = tk.StringVar(value=datetime.date.today().isoformat())
-        self.category_var = tk.StringVar(value="交通")
-        self.amount_var = tk.StringVar()
-        self.currency_var = tk.StringVar(value="TWD")
-        self.payer_var = tk.StringVar(value="本人")
-        self.description_var = tk.StringVar()
-        self.status_var = tk.StringVar(value="請輸入旅遊支出後按「新增」")
-
-        self.build_ui()
-
-    def build_ui(self):
-        top_frame = ttk.Frame(self.root, padding=10)
-        top_frame.pack(fill="x")
-
-        form_labels = ["日期", "類別", "金額", "幣別", "付款人", "備註"]
-        for idx, label in enumerate(form_labels):
-            ttk.Label(top_frame, text=label).grid(row=0, column=idx, sticky="w", padx=4)
-
-        ttk.Entry(top_frame, textvariable=self.date_var, width=12).grid(row=1, column=0, padx=4)
-        categories = ["交通", "住宿", "餐飲", "門票", "購物", "其他"]
-        ttk.Combobox(top_frame, textvariable=self.category_var, values=categories, width=12, state="readonly").grid(row=1, column=1, padx=4)
-        ttk.Entry(top_frame, textvariable=self.amount_var, width=12).grid(row=1, column=2, padx=4)
-        ttk.Combobox(top_frame, textvariable=self.currency_var, values=["TWD", "USD", "JPY", "EUR", "CNY"], width=12, state="readonly").grid(row=1, column=3, padx=4)
-        ttk.Entry(top_frame, textvariable=self.payer_var, width=12).grid(row=1, column=4, padx=4)
-        ttk.Entry(top_frame, textvariable=self.description_var, width=30).grid(row=1, column=5, padx=4)
-
-        button_frame = ttk.Frame(self.root, padding=(10, 0, 10, 10))
-        button_frame.pack(fill="x")
-        ttk.Button(button_frame, text="新增", command=self.add_expense, width=10).pack(side="left", padx=3)
-        ttk.Button(button_frame, text="刪除選取", command=self.delete_selected, width=10).pack(side="left", padx=3)
-        ttk.Button(button_frame, text="清空資料", command=self.clear_expenses, width=10).pack(side="left", padx=3)
-        ttk.Button(button_frame, text="載入 CSV", command=self.load_csv, width=10).pack(side="left", padx=3)
-        ttk.Button(button_frame, text="儲存 CSV", command=self.save_csv, width=10).pack(side="left", padx=3)
-        ttk.Button(button_frame, text="匯出摘要", command=self.export_summary, width=10).pack(side="left", padx=3)
-
-        self.tree = ttk.Treeview(self.root, columns=("date", "category", "amount", "currency", "payer", "description"), show="headings", selectmode="extended")
-        headings = ["日期", "類別", "金額", "幣別", "付款人", "備註"]
-        widths = [90, 100, 90, 70, 100, 320]
-        for col, heading, width in zip(self.tree["columns"], headings, widths):
-            self.tree.heading(col, text=heading)
-            self.tree.column(col, width=width, anchor="center")
-
-        self.tree.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-
-        summary_frame = ttk.Frame(self.root, padding=10)
-        summary_frame.pack(fill="x")
-        self.summary_label = ttk.Label(summary_frame, text="目前合計：0 筆，總金額 TWD 0.00", foreground="blue")
-        self.summary_label.pack(anchor="w")
-        ttk.Label(summary_frame, textvariable=self.status_var, foreground="darkgreen").pack(anchor="w", pady=(4, 0))
-
-    def add_expense(self):
-        date_value = self.date_var.get().strip()
-        category = self.category_var.get().strip()
-        amount_text = self.amount_var.get().strip()
-        currency = self.currency_var.get().strip()
-        payer = self.payer_var.get().strip()
-        description = self.description_var.get().strip()
-
-        if not date_value:
-            messagebox.showwarning("欄位不足", "請輸入日期。格式：YYYY-MM-DD")
-            return
-        try:
-            datetime.date.fromisoformat(date_value)
-        except ValueError:
-            messagebox.showwarning("格式錯誤", "日期格式必須為 YYYY-MM-DD")
-            return
-
-        try:
-            amount = float(amount_text)
-            if amount <= 0:
-                raise ValueError
-        except ValueError:
-            messagebox.showwarning("格式錯誤", "金額必須為正數")
-            return
-
-        expense = TravelExpense(date=date_value, category=category, amount=amount, currency=currency, payer=payer, description=description)
-        self.expenses.append(expense)
-        self.tree.insert("", "end", values=expense.to_row())
-        self.amount_var.set("")
-        self.description_var.set("")
-        self.status_var.set("已新增一筆支出。")
-        self.update_summary()
-
-    def delete_selected(self):
-        selected = self.tree.selection()
-        if not selected:
-            messagebox.showinfo("刪除", "請先選取要刪除的支出項目。")
-            return
-        for item in selected:
-            index = self.tree.index(item)
-            self.tree.delete(item)
-            if 0 <= index < len(self.expenses):
-                self.expenses.pop(index)
-        self.status_var.set(f"已刪除 {len(selected)} 筆支出。")
-        self.update_summary()
-
-    def clear_expenses(self):
-        if not self.expenses:
-            return
-        if not messagebox.askyesno("清空確認", "確認要清空所有旅遊支出嗎？"):
-            return
-        self.expenses.clear()
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        self.current_file = None
-        self.status_var.set("已清空所有支出資料。")
-        self.update_summary()
-
-    def load_csv(self):
-        path = filedialog.askopenfilename(title="載入旅遊支出 CSV", filetypes=[("CSV 檔案", "*.csv")])
-        if not path:
-            return
-        try:
-            with open(path, newline="", encoding="utf-8") as csvfile:
-                reader = csv.reader(csvfile)
-                rows = list(reader)
-
-            if not rows:
-                messagebox.showwarning("載入失敗", "CSV 檔案為空。")
-                return
-
-            self.expenses.clear()
-            for item in self.tree.get_children():
-                self.tree.delete(item)
-
-            for idx, row in enumerate(rows):
-                if idx == 0 and row[:6] == ["日期", "類別", "金額", "幣別", "付款人", "備註"]:
-                    continue
-                expense = TravelExpense.from_row(row)
-                if expense is None:
-                    continue
-                self.expenses.append(expense)
-                self.tree.insert("", "end", values=expense.to_row())
-
-            self.current_file = path
-            self.status_var.set(f"已從 {Path(path).name} 載入 {len(self.expenses)} 筆資料。")
-            self.update_summary()
-        except Exception as exc:
-            messagebox.showerror("載入錯誤", f"讀取 CSV 時發生錯誤：{exc}")
-
-    def save_csv(self):
-        if not self.expenses:
-            messagebox.showinfo("儲存", "目前沒有支出資料可儲存。")
-            return
-        path = filedialog.asksaveasfilename(title="儲存旅遊支出 CSV", defaultextension=".csv", filetypes=[("CSV 檔案", "*.csv")])
-        if not path:
-            return
-        try:
-            with open(path, "w", newline="", encoding="utf-8") as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(["日期", "類別", "金額", "幣別", "付款人", "備註"])
-                for expense in self.expenses:
-                    writer.writerow(expense.to_row())
-            self.current_file = path
-            self.status_var.set(f"已儲存至 {Path(path).name}。")
-        except Exception as exc:
-            messagebox.showerror("儲存錯誤", f"儲存 CSV 時發生錯誤：{exc}")
-
-    def export_summary(self):
-        if not self.expenses:
-            messagebox.showinfo("匯出摘要", "目前沒有資料可匯出摘要。")
-            return
-        totals = self.calculate_totals()
-        summary_lines = ["旅遊支出摘要", "====================", f"總筆數：{len(self.expenses)}"]
-        for currency, total in totals.items():
-            summary_lines.append(f"總計 ({currency})：{total:.2f}")
-        summary_lines.append("")
-        summary_lines.append("按類別統計：")
-        category_summary = self.category_summary()
-        for category, amount_map in category_summary.items():
-            for currency, amount in amount_map.items():
-                summary_lines.append(f"  {category} ({currency})：{amount:.2f}")
-
-        summary_text = "\n".join(summary_lines)
-        summary_file = filedialog.asksaveasfilename(title="匯出摘要 TXT", defaultextension=".txt", filetypes=[("文字檔", "*.txt")])
-        if summary_file:
-            try:
-                with open(summary_file, "w", encoding="utf-8") as txtfile:
-                    txtfile.write(summary_text)
-                self.status_var.set(f"已匯出摘要至 {Path(summary_file).name}。")
-                messagebox.showinfo("匯出完成", "已成功匯出旅遊摘要。")
-            except Exception as exc:
-                messagebox.showerror("匯出錯誤", f"匯出摘要時發生錯誤：{exc}")
-        else:
-            self.status_var.set("已取消匯出摘要。")
-
-    def calculate_totals(self):
-        totals = {}
-        for expense in self.expenses:
-            totals.setdefault(expense.currency, 0.0)
-            totals[expense.currency] += expense.amount
-        return totals
-
-    def category_summary(self):
-        summary = {}
-        for expense in self.expenses:
-            summary.setdefault(expense.category, {})
-            summary[expense.category].setdefault(expense.currency, 0.0)
-            summary[expense.category][expense.currency] += expense.amount
-        return summary
-
-    def update_summary(self):
-        totals = self.calculate_totals()
-        total_texts = [f"{currency} {amount:.2f}" for currency, amount in totals.items()]
-        text = f"目前合計：{len(self.expenses)} 筆，總金額 {' / '.join(total_texts) if total_texts else '0.00'}"
-        self.summary_label.config(text=text)
+def init_db():
+    conn = sqlite3.connect(DB)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            category TEXT,
+            amount REAL,
+            currency TEXT,
+            payment TEXT,
+            desc TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
 
+def load():
+    init_db()
+    conn = sqlite3.connect(DB)
+    rows = conn.execute(
+        "SELECT id,date,category,amount,currency,payment,desc FROM expenses ORDER BY date DESC"
+    ).fetchall()
+    conn.close()
+    return [Expense(*r) for r in rows]
+
+
+def add(e: Expense):
+    conn = sqlite3.connect(DB)
+    conn.execute("""
+        INSERT INTO expenses(date,category,amount,currency,payment,desc)
+        VALUES (?,?,?,?,?,?)
+    """, (e.date, e.category, e.amount, e.currency, e.payment, e.desc))
+    conn.commit()
+    conn.close()
+
+
+def delete(exp_id: int):
+    conn = sqlite3.connect(DB)
+    conn.execute("DELETE FROM expenses WHERE id=?", (exp_id,))
+    conn.commit()
+    conn.close()
+
+
+# =========================
+# 🤖 OCR
+# =========================
+def parse(text: str):
+    result = {
+        "date": "",
+        "amount": "",
+        "desc": ""
+    }
+
+    m = re.search(r"(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})", text)
+    if m:
+        y, mth, d = m.groups()
+        result["date"] = f"{y}-{mth.zfill(2)}-{d.zfill(2)}"
+
+    a = re.search(r"([0-9,]+)\s*円|￥\s*([0-9,]+)", text)
+    if a:
+        amt = a.group(1) or a.group(2)
+        result["amount"] = amt.replace(",", "")
+
+    result["desc"] = text.splitlines()[0][:30] if text else ""
+
+    return result
+
+
+# =========================
+# 🎨 UI
+# =========================
+def style():
+    st.markdown("""
+    <style>
+    .block-container {
+        padding: 1rem;
+    }
+
+    .card {
+        padding: 10px;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        margin-bottom: 8px;
+    }
+
+    h1, h2 {
+        font-size: 20px !important;
+    }
+
+    </style>
+    """, unsafe_allow_html=True)
+
+
+# =========================
+# 🚀 APP
+# =========================
 def main():
-    root = tk.Tk()
-    TravelExpenseApp(root)
-    root.mainloop()
+    st.set_page_config(page_title="記帳App", layout="centered")
+
+    style()
+    init_db()
+
+    if "data" not in st.session_state:
+        st.session_state.data = load()
+
+    st.title("📱 記帳 App")
+
+    # =========================
+    # 📊 Summary
+    # =========================
+    if st.session_state.data:
+        total = sum(x.amount for x in st.session_state.data)
+
+        col1, col2 = st.columns(2)
+        col1.metric("💰 總支出", int(total))
+        col2.metric("📋 筆數", len(st.session_state.data))
+    else:
+        st.info("尚無資料")
+
+    st.divider()
+
+    # =========================
+    # ➕ Add
+    # =========================
+    st.subheader("➕ 新增")
+
+    with st.form("f"):
+        c1, c2 = st.columns(2)
+
+        date = c1.date_input("日期", datetime.date.today())
+        cat = c2.selectbox("類別", ["交通", "住宿", "餐飲", "購物", "門票", "其他"])
+
+        amt = st.text_input("金額")
+        cur = st.selectbox("幣別", ["JPY", "TWD", "USD"])
+        pay = st.selectbox("付款", ["現金", "信用卡"])
+        desc = st.text_input("備註")
+
+        if st.form_submit_button("新增"):
+            try:
+                e = Expense(
+                    None,
+                    date.isoformat(),
+                    cat,
+                    float(amt),
+                    cur,
+                    pay,
+                    desc
+                )
+                add(e)
+                st.session_state.data = load()
+                st.rerun()
+            except:
+                st.error("金額錯誤")
+
+    st.divider()
+
+    # =========================
+    # 📷 OCR
+    # =========================
+    st.subheader("📷 掃描發票")
+
+    file = st.file_uploader("上傳圖片", type=["jpg", "png"])
+
+    if file:
+        img = Image.open(file)
+        st.image(img, use_column_width=True)
+
+        if OCR_AVAILABLE:
+            text = pytesseract.image_to_string(img, lang="jpn+eng")
+            st.text_area("OCR", text, height=100)
+
+            p = parse(text)
+
+            st.write(p)
+
+            if st.button("用OCR新增"):
+                if p["amount"]:
+                    e = Expense(
+                        None,
+                        p["date"] or datetime.date.today().isoformat(),
+                        "其他",
+                        float(p["amount"]),
+                        "JPY",
+                        "現金",
+                        p["desc"]
+                    )
+                    add(e)
+                    st.session_state.data = load()
+                    st.rerun()
+
+    st.divider()
+
+    # =========================
+    # 📋 List (mobile card UI)
+    # =========================
+    st.subheader("📋 記錄")
+
+    for e in st.session_state.data:
+        st.markdown(f"""
+        <div class="card">
+        📅 {e.date}<br>
+        🏷 {e.category}<br>
+        💰 {int(e.amount)} {e.currency}<br>
+        📝 {e.desc}
+        </div>
+        """, unsafe_allow_html=True)
+
+        if st.button("🗑 刪除", key=f"d{e.id}"):
+            delete(e.id)
+            st.session_state.data = load()
+            st.rerun()
+
+    # =========================
+    # 📤 Export
+    # =========================
+    st.divider()
+    st.subheader("📤 匯出")
+
+    if st.session_state.data:
+        csv = "date,category,amount,currency,payment,desc\n"
+        for e in st.session_state.data:
+            csv += f"{e.date},{e.category},{e.amount},{e.currency},{e.payment},{e.desc}\n"
+
+        st.download_button("下載 CSV", csv, file_name="expense.csv")
 
 
 if __name__ == "__main__":
