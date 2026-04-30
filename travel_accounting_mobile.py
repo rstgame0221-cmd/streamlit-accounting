@@ -54,82 +54,53 @@ df = pd.DataFrame(rows)
 # ======================
 # 刪除 / 修改
 # ======================
-st.subheader("📋 記帳列表")
+st.subheader("📋 記帳列表（依日期）")
 
-for i, row in df.iterrows():
+data = supabase.table("expenses").select("*").order("date", desc=True).execute()
+rows = data.data or []
 
-    with st.container():
-        col1, col2, col3, col4, col5, col6 = st.columns([2,2,2,2,3,2])
+if not rows:
+    st.info("目前沒有資料")
+    st.stop()
 
-        with col1:
-            st.write(row["date"])
-        with col2:
-            st.write(row["category"])
-        with col3:
-            st.write(f"{row['amount']} {row['currency']}")
-        with col4:
-            st.write(row["payment_method"])
-        with col5:
-            st.write(row["description"])
+from collections import defaultdict
 
-        # ======================
-        # 修改
-        # ======================
-        with col6:
-            edit = st.button("✏️", key=f"edit_{row['id']}")
-            delete = st.button("🗑", key=f"del_{row['id']}")
+grouped = defaultdict(list)
 
-        # 刪除
-        if delete:
-            supabase.table("expenses").delete().eq("id", row["id"]).execute()
-            st.rerun()
+for r in rows:
+    grouped[r["date"]].append(r)
 
-        # 修改
-        if edit:
-            st.session_state["edit_id"] = row["id"]
-            st.session_state["edit_data"] = row
+# ===== 每一天折疊 =====
+for date, items in grouped.items():
 
-# ======================
-# 編輯區
-# ======================
-if "edit_id" in st.session_state:
+    with st.expander(f"📅 {date}（{len(items)} 筆）"):
 
-    st.divider()
-    st.subheader("✏️ 編輯資料")
+        for item in items:
 
-    edit = st.session_state["edit_data"]
+            col1, col2, col3, col4, col5 = st.columns([2,2,2,3,2])
 
-    new_date = st.date_input("日期", value=pd.to_datetime(edit["date"]))
-    new_category = st.selectbox("類別", ["交通","住宿","餐飲","門票","購物","其他"], index=0)
-    new_amount = st.number_input("金額", value=float(edit["amount"]))
-    new_currency = st.selectbox("幣別", ["JPY","TWD","USD","EUR"])
-    new_payment = st.selectbox("付款方式", ["現金","信用卡"])
-    new_desc = st.text_input("備註", value=edit["description"])
+            with col1:
+                st.write(item["category"])
 
-    if st.button("儲存修改"):
-        supabase.table("expenses").update({
-            "date": str(new_date),
-            "category": new_category,
-            "amount": new_amount,
-            "currency": new_currency,
-            "payment_method": new_payment,
-            "description": new_desc
-        }).eq("id", st.session_state["edit_id"]).execute()
+            with col2:
+                st.write(f"{item['amount']} {item['currency']}")
 
-        del st.session_state["edit_id"]
-        st.rerun()
+            with col3:
+                st.write(item["payment_method"])
 
-# ======================
-# 匯出 CSV
-# ======================
-st.divider()
-st.subheader("📤 匯出資料")
+            with col4:
+                st.write(item["description"])
 
-csv = df.to_csv(index=False).encode("utf-8-sig")
+            with col5:
+                edit = st.button("✏️", key=f"edit_{item['id']}")
+                delete = st.button("🗑", key=f"del_{item['id']}")
 
-st.download_button(
-    "下載 CSV",
-    csv,
-    "expenses.csv",
-    "text/csv"
-)
+            # ===== 刪除 =====
+            if delete:
+                supabase.table("expenses").delete().eq("id", item["id"]).execute()
+                st.rerun()
+
+            # ===== 修改 =====
+            if edit:
+                st.session_state["edit"] = item
+                st.rerun()
