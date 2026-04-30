@@ -5,7 +5,7 @@ from collections import defaultdict
 import pandas as pd
 
 # ======================
-# Supabase 連線
+# Supabase
 # ======================
 supabase = create_client(
     st.secrets["SUPABASE_URL"],
@@ -38,12 +38,6 @@ st.markdown("""
 .small {
     font-size: 13px;
     color: #666;
-}
-
-.row {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 6px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -85,7 +79,7 @@ if not rows:
     st.stop()
 
 # ======================
-# 分組（依日期）
+# 分組
 # ======================
 grouped = defaultdict(list)
 
@@ -93,7 +87,7 @@ for r in rows:
     grouped[r["date"]].append(r)
 
 # ======================
-# Card UI 列表
+# 列表
 # ======================
 st.subheader("📋 記帳列表")
 
@@ -103,28 +97,33 @@ for date, items in grouped.items():
 
         for item in items:
 
+            # ===== 卡片 =====
             st.markdown(f"""
 <div class="card">
 
 <div class="amount">💰 {item['amount']} {item['currency']}</div>
 
-<div class="row">
-    <div>🏷️ {item['category']}</div>
-    <div>💳 {item['payment_method']}</div>
-</div>
+<div>🏷️ {item['category']} ｜ 💳 {item['payment_method']}</div>
 
 <div class="small">📝 {item['description']}</div>
 
 </div>
 """, unsafe_allow_html=True)
 
-btn1, btn2 = st.columns([1,1], gap="small")
+            # ======================
+            # ⭐ 手機穩定按鈕（重點修正）
+            # ======================
+            btn1, btn2 = st.columns([1,1], gap="small")
 
-with btn1:
-    st.button("✏️ 修改", key=f"edit_{item['id']}")
+            with btn1:
+                if st.button("✏️ 修改", key=f"edit_{item['id']}"):
+                    st.session_state["edit"] = item
+                    st.rerun()
 
-with btn2:
-    st.button("🗑 刪除", key=f"del_{item['id']}")
+            with btn2:
+                if st.button("🗑 刪除", key=f"del_{item['id']}"):
+                    supabase.table("expenses").delete().eq("id", item["id"]).execute()
+                    st.rerun()
 
 # ======================
 # 修改功能
@@ -160,15 +159,13 @@ if "edit" in st.session_state:
 # 匯出 CSV
 # ======================
 st.divider()
-st.subheader("📤 匯出")
+st.subheader("📤 匯出資料")
 
 df = pd.DataFrame(rows)
 
-csv = df.to_csv(index=False).encode("utf-8-sig")
-
 st.download_button(
     "下載 CSV",
-    csv,
+    df.to_csv(index=False).encode("utf-8-sig"),
     "expenses.csv",
     "text/csv"
 )
