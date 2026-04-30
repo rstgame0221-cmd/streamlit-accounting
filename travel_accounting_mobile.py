@@ -118,17 +118,13 @@ for date, items in grouped.items():
 </div>
 """, unsafe_allow_html=True)
 
-            col1, col2 = st.columns(2)
+btn1, btn2 = st.columns([1,1], gap="small")
 
-            with col1:
-                if st.button("✏️ 修改", key=f"edit_{item['id']}"):
-                    st.session_state["edit"] = item
-                    st.rerun()
+with btn1:
+    st.button("✏️ 修改", key=f"edit_{item['id']}")
 
-            with col2:
-                if st.button("🗑 刪除", key=f"del_{item['id']}"):
-                    supabase.table("expenses").delete().eq("id", item["id"]).execute()
-                    st.rerun()
+with btn2:
+    st.button("🗑 刪除", key=f"del_{item['id']}")
 
 # ======================
 # 修改功能
