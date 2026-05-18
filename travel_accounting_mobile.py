@@ -1,37 +1,52 @@
 import streamlit as st
 import datetime
-from supabase import create_client
-from collections import defaultdict
 import pandas as pd
 
+from supabase import create_client
+from collections import defaultdict
+
 # ======================
-# Supabase
+# Page
 # ======================
-supabase = create_client(
-    st.secrets["SUPABASE_URL"],
-    st.secrets["SUPABASE_KEY"]
+
+st.set_page_config(
+    page_title="家庭旅遊記帳",
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
-st.set_page_config(page_title="家庭記帳", layout="centered")
-
-st.title("💰 家庭旅遊記帳")
-
 # ======================
-# CSS 卡片
+# CSS
 # ======================
+
 st.markdown("""
 <style>
+
+.block-container {
+    padding-top: 1rem;
+    padding-bottom: 4rem;
+}
+
+input {
+    font-size: 20px !important;
+}
+
+button {
+    height: 48px !important;
+    border-radius: 12px !important;
+}
+
 .card {
     border: 1px solid #e6e6e6;
-    border-radius: 14px;
-    padding: 12px;
-    margin-bottom: 10px;
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 12px;
     background: white;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 
 .amount {
-    font-size: 18px;
+    font-size: 24px;
     font-weight: bold;
 }
 
@@ -39,129 +54,169 @@ st.markdown("""
     font-size: 13px;
     color: #666;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
 # ======================
+# Supabase
+# ======================
+
+supabase = create_client(
+    st.secrets["SUPABASE_URL"],
+    st.secrets["SUPABASE_KEY"]
+)
+
+# ======================
+# Title
+# ======================
+
+st.title("💰 家庭旅遊記帳")
+
+# ======================
 # 新增資料
 # ======================
+
 with st.form("add_form"):
-    date = st.date_input("日期", value=datetime.date.today())
-    category = st.selectbox("類別", ["交通", "住宿", "餐飲", "門票", "購物", "其他"])
-    amount = st.number_input("金額", min_value=0.0, step=1.0)
-    currency = st.selectbox("幣別", ["JPY", "TWD", "USD", "EUR"])
-    payment = st.selectbox("付款方式", ["現金", "信用卡"])
+
+    date = st.date_input(
+        "日期",
+        value=datetime.date.today()
+    )
+
+    categories = ["交通", "住宿", "餐飲", "門票", "購物", "其他"]
+
+    category = st.selectbox("類別", categories)
+
+    amount = st.text_input(
+        "金額",
+        placeholder="輸入數字"
+    )
+
+    currency = st.selectbox(
+        "幣別",
+        ["JPY", "TWD", "USD", "EUR"]
+    )
+
+    payment = st.selectbox(
+        "付款方式",
+        ["現金", "信用卡"]
+    )
+
     desc = st.text_input("備註")
 
-    submit = st.form_submit_button("新增")
+    submit = st.form_submit_button("➕ 新增")
 
     if submit:
-        supabase.table("expenses").insert({
-            "date": str(date),
-            "category": category,
-            "amount": amount,
-            "currency": currency,
-            "payment_method": payment,
-            "description": desc
-        }).execute()
 
-        st.success("已新增")
-        st.rerun()
+        try:
+            supabase.table("expenses").insert({
+                "date": str(date),
+                "category": category,
+                "amount": float(amount),
+                "currency": currency,
+                "payment_method": payment,
+                "description": desc
+            }).execute()
+
+            st.success("已新增")
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"新增失敗：{e}")
 
 # ======================
 # 讀資料
 # ======================
-data = supabase.table("expenses").select("*").order("date", desc=True).execute()
+
+data = supabase.table("expenses") \
+    .select("*") \
+    .order("date", desc=True) \
+    .execute()
+
 rows = data.data or []
 
 if not rows:
     st.info("目前沒有資料")
     st.stop()
 
+df = pd.DataFrame(rows)
+
 # ======================
-# 分組
+# 統計
 # ======================
+
+st.subheader("📊 總支出")
+
+st.metric("總計", f"{df['amount'].sum():,.0f}")
+
+# ======================
+# 幣別統計
+# ======================
+
+st.subheader("💱 幣別統計")
+
+currency_summary = df.groupby("currency")["amount"].sum()
+
+cols = st.columns(len(currency_summary))
+
+for idx, (cur, total) in enumerate(currency_summary.items()):
+    cols[idx].metric(cur, f"{total:,.0f}")
+
+# ======================
+# 列表
+# ======================
+
+st.subheader("📋 記帳列表")
+
 grouped = defaultdict(list)
 
 for r in rows:
     grouped[r["date"]].append(r)
 
-# ======================
-# 列表
-# ======================
-st.subheader("📋 記帳列表")
+for date in sorted(grouped.keys(), reverse=True):
 
-for date, items in grouped.items():
+    st.markdown(f"### 📅 {date}")
 
-    with st.expander(f"📅 {date}（{len(items)} 筆）"):
+    for item in grouped[date]:
 
-        for item in items:
-
-            # ===== 卡片 =====
-            st.markdown(f"""
+        st.markdown(f"""
 <div class="card">
 
-<div class="amount">💰 {item['amount']} {item['currency']}</div>
+<div class="amount">
+💰 {item['amount']:,.0f} {item['currency']}
+</div>
 
-<div>🏷️ {item['category']} ｜ 💳 {item['payment_method']}</div>
+<div>
+🏷️ {item['category']} ｜ 💳 {item['payment_method']}
+</div>
 
-<div class="small">📝 {item['description']}</div>
+<div class="small">
+📝 {item.get('description', '')}
+</div>
 
 </div>
 """, unsafe_allow_html=True)
 
-            # ======================
-            # ⭐ 手機穩定按鈕（重點修正）
-            # ======================
-            btn1, btn2 = st.columns([1,1], gap="small")
-
-            with btn1:
-                if st.button("✏️ 修改", key=f"edit_{item['id']}"):
-                    st.session_state["edit"] = item
-                    st.rerun()
-
-            with btn2:
-                if st.button("🗑 刪除", key=f"del_{item['id']}"):
-                    supabase.table("expenses").delete().eq("id", item["id"]).execute()
-                    st.rerun()
-
 # ======================
-# 修改功能
+# 圖表
 # ======================
-if "edit" in st.session_state:
 
-    st.divider()
-    st.subheader("✏️ 修改資料")
-
-    e = st.session_state["edit"]
-
-    new_date = st.date_input("日期", value=datetime.datetime.strptime(e["date"], "%Y-%m-%d").date())
-    new_category = st.selectbox("類別", ["交通","住宿","餐飲","門票","購物","其他"])
-    new_amount = st.number_input("金額", value=float(e["amount"]))
-    new_currency = st.selectbox("幣別", ["JPY","TWD","USD","EUR"])
-    new_payment = st.selectbox("付款方式", ["現金","信用卡"])
-    new_desc = st.text_input("備註", value=e["description"])
-
-    if st.button("💾 儲存修改"):
-        supabase.table("expenses").update({
-            "date": str(new_date),
-            "category": new_category,
-            "amount": new_amount,
-            "currency": new_currency,
-            "payment_method": new_payment,
-            "description": new_desc
-        }).eq("id", e["id"]).execute()
-
-        del st.session_state["edit"]
-        st.rerun()
-
-# ======================
-# 匯出 CSV
-# ======================
 st.divider()
-st.subheader("📤 匯出資料")
 
-df = pd.DataFrame(rows)
+st.subheader("📈 類別統計")
+
+chart_data = df.groupby("category")["amount"].sum()
+
+st.bar_chart(chart_data)
+
+# ======================
+# CSV
+# ======================
+
+st.divider()
+
+st.subheader("📤 匯出資料")
 
 st.download_button(
     "下載 CSV",
